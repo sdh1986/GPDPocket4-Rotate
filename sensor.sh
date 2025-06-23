@@ -14,6 +14,16 @@ HWDB_UPDATE_REQUIRED=false
 KWIN_CONFIG_REMOVED=false # New flag for KWin config removal
 CONSOLE_ROTATION_APPLIED=false # New flag for console rotation
 
+# --- Update Pacman mirrorlist ---
+echo -e "${BLUE}Updating Pacman mirrorlist and synchronizing databases...${NC}"
+sudo pacman -Syyu --noconfirm
+if [ $? -eq 0 ]; then
+    echo -e "${GREEN}Pacman mirrorlist updated and databases synchronized successfully.${NC}"
+else
+    echo -e "${RED}Failed to update Pacman mirrorlist or synchronize databases. Please check your internet connection and pacman configuration.${NC}"
+    exit 1
+fi
+
 # --- 1. Install iio-sensor-proxy ---
 echo -e "${BLUE}\nChecking for iio-sensor-proxy package...${NC}"
 if ! pacman -Qs iio-sensor-proxy > /dev/null 2>&1; then
