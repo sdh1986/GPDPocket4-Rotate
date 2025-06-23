@@ -10,11 +10,11 @@ NC='\033[0m' # No Color
 echo -e "${BLUE}Starting sensor configuration script...${NC}"
 
 # --- Check for Root Privileges ---
-if [ "$(id -u)" -ne 0 ]; then
-    echo -e "${RED}Error: This script must be run as root.${NC}"
-    echo -e "${YELLOW}Please use 'sudo ./sensor.sh'${NC}"
-    exit 1
-fi
+#if [ "$(id -u)" -ne 0 ]; then
+#   echo -e "${RED}Error: This script must be run as root.${NC}"
+#   echo -e "${YELLOW}Please use 'sudo ./sensor.sh'${NC}"
+#   exit 1
+#fi
 
 INSTALL_REQUIRED=false
 HWDB_UPDATE_REQUIRED=false
