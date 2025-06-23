@@ -9,13 +9,6 @@ NC='\033[0m' # No Color
 
 echo -e "${BLUE}Starting sensor configuration script...${NC}"
 
-# --- Check for Root Privileges ---
-#if [ "$(id -u)" -ne 0 ]; then
-#   echo -e "${RED}Error: This script must be run as root.${NC}"
-#   echo -e "${YELLOW}Please use 'sudo ./sensor.sh'${NC}"
-#   exit 1
-#fi
-
 INSTALL_REQUIRED=false
 HWDB_UPDATE_REQUIRED=false
 KWIN_CONFIG_REMOVED=false # New flag for KWin config removal
@@ -25,6 +18,7 @@ CONSOLE_ROTATION_APPLIED=false # New flag for console rotation
 echo -e "${BLUE}\nChecking for iio-sensor-proxy package...${NC}"
 if ! pacman -Qs iio-sensor-proxy > /dev/null 2>&1; then
     echo -e "${YELLOW}iio-sensor-proxy not found. Installing...${NC}"
+    # Use sudo for pacman to install packages
     sudo pacman -S iio-sensor-proxy --noconfirm
     if [ $? -eq 0 ]; then
         echo -e "${GREEN}iio-sensor-proxy installed successfully.${NC}"
@@ -47,13 +41,17 @@ EOF_BLOCK
 
 echo -e "${BLUE}\nChecking/creating ${HWDB_FILE}...${NC}"
 
-if [ -f "$HWDB_FILE" ] && grep -qF -- "$HWDB_BLOCK" "$HWDB_FILE"; then
-    echo -e "${GREEN}${HWDB_FILE} already exists and contains the exact required sensor configuration.${NC}"
+# Check if the file exists and if the block is already present.
+# We need to use sudo to read the file if it exists, especially if it was created by root.
+# Using 'grep -qF -- "$(head -n 1 <<< "$HWDB_BLOCK")" "$HWDB_FILE"' checks only the first line
+# of the block, which is usually sufficient for a unique identifier.
+if [ -f "$HWDB_FILE" ] && sudo grep -qF -- "$(head -n 1 <<< "$HWDB_BLOCK")" "$HWDB_FILE"; then
+    echo -e "${GREEN}${HWDB_FILE} already exists and contains the required sensor configuration.${NC}"
 else
     echo -e "${YELLOW}Adding/updating sensor configuration in ${HWDB_FILE}...${NC}"
-    # This block now correctly appends only if the exact block is not found.
-    # The previous `grep -qF` was for the whole block; if it's not there, we add it.
-    echo -e "$HWDB_BLOCK" >> "$HWDB_FILE"
+    # Use 'sudo tee -a' to write to a system file with root privileges.
+    # tee -a appends to the file.
+    echo -e "$HWDB_BLOCK" | sudo tee -a "$HWDB_FILE" > /dev/null
     if [ $? -eq 0 ]; then
         echo -e "${GREEN}Sensor configuration written to ${HWDB_FILE} successfully.${NC}"
         HWDB_UPDATE_REQUIRED=true
@@ -68,7 +66,8 @@ KWIN_DEST_FILE="/var/lib/sddm/.config/kwinoutputconfig.json"
 
 echo -e "${BLUE}\nChecking for and removing KWin output configuration file...${NC}"
 
-if [ -f "$KWIN_DEST_FILE" ]; then
+# Use sudo when checking for file existence in /var/lib/sddm as well
+if sudo [ -f "$KWIN_DEST_FILE" ]; then
     echo -e "${YELLOW}KWin config file found at ${KWIN_DEST_FILE}. Removing...${NC}"
     sudo rm -f "$KWIN_DEST_FILE"
     if [ $? -eq 0 ]; then
@@ -136,7 +135,7 @@ else
     echo -e "${YELLOW}xrandr did not find a primary output. Trying kscreen-doctor (for KDE Plasma/Wayland/fallback)...${NC}"
     # Fallback to kscreen-doctor with a timeout if xrandr fails
     # Temporarily removed 2>/dev/null to see potential kscreen-doctor errors
-    KSCREEN_DOCTOR_OUTPUT=$(timeout 5s sudo -E env DISPLAY="$DISPLAY" XAUTHORITY="$XAUTHORITY" kscreen-doctor --outputs | grep "Output:" | awk '{print $3}' | head -n 1)
+    KSCREEN_DOCTOR_OUTPUT=$(timeout 5s sudo -E env DISPLAY="$DISPLAY" XAUTHORITY="$XAUTHORITY" kscreen-doctor --outputs 2>/dev/null | grep "Output:" | awk '{print $3}' | head -n 1)
     KSCREEN_DOCTOR_EXIT_CODE=$?
 
     if [ "$KSCREEN_DOCTOR_EXIT_CODE" -eq 124 ]; then
@@ -156,11 +155,12 @@ if [ -z "$VideoOutput" ]; then
 else
     SEARCH_STRING="video=${VideoOutput}:panel_orientation=right_side_up"
     # Check if the line already contains the rotation configuration for this output
-    if grep -qF "fbcon=rotate:1 video=${VideoOutput}:panel_orientation=right_side_up" "$KERNEL_CONF_FILE"; then
+    # Need to use sudo to read the kernel configuration file
+    if sudo grep -qF "fbcon=rotate:1 video=${VideoOutput}:panel_orientation=right_side_up" "$KERNEL_CONF_FILE"; then
         echo -e "${GREEN}Console rotation for ${VideoOutput} already configured in ${KERNEL_CONF_FILE}.${NC}"
     else
         echo -e "${YELLOW}Adding console rotation to ${KERNEL_CONF_FILE} for ${VideoOutput}...${NC}"
-        # Use sed to add the rotation parameters
+        # Use sed to add the rotation parameters, and sudo for sed to write to the file
         sudo sed -i "/^options/s/splash/splash fbcon=rotate:1 video=${VideoOutput}:panel_orientation=right_side_up/" "$KERNEL_CONF_FILE"
         if [ $? -eq 0 ]; then
             echo -e "${GREEN}Console rotation configuration added successfully.${NC}"
